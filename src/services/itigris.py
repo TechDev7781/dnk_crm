@@ -276,7 +276,11 @@ class ItigrisService:
                     "UF_CRM_1760104146355": float(order["sum"]),  # Сумма заказа
                     "UF_CRM_1760104154471": float(order["paidSum"]),  # Сумма к оплате
                     "UF_CRM_1760104282834": int(
-                        float(order["sum"]) - float(order["paidSum"])
+                        (
+                            (float(order["sum"]) - float(order["paidSum"]))
+                            / float(order["sum"])
+                        )
+                        * 100
                     ),  # Скидка
                     "UF_CRM_1760104313977": [
                         {
