@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -149,14 +150,21 @@ class BitrixService:
                         time=cls._convert_date(lead_full.get("UF_CRM_1760092417949")),
                     )
 
-                    records = ItigrisService.get_records(
-                        itigris_token, status="CONFIRMED"
-                    )
+                    time.sleep(3)
+
+                    records = ItigrisService.get_records(itigris_token)
                     if not records:
                         continue
 
-                    record = records[0]
-                    record_id_to_lead_id[int(record.get("id", 0))] = int(lead["ID"])
+                    max_id = None
+                    for record in records:
+                        if not max_id:
+                            max_id = int(record.get("id", 0))
+                        else:
+                            if int(record.get("id", 0)) > max_id:
+                                max_id = int(record.get("id", 0))
+
+                    record_id_to_lead_id[max_id] = int(lead["ID"])
 
                     print(f"Лид {lead['ID']} обработан успешно")
                 except Exception as e:

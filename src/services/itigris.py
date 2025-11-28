@@ -174,16 +174,19 @@ class ItigrisService:
     def get_records(
         cls,
         token: str,
-        status: str,
+        status: str | None = None,
     ) -> list[dict]:
         """Получение записей по статусу"""
 
+        params = {}
+        if status:
+            params["status"] = status
+
+        params["appointmentFrom"] = datetime.now().strftime("%Y-%m-%d")
+
         response = requests.get(
             url=f"{ITIGRIS_URL_NEW}/api/v2/registry-records",
-            params={
-                "status": status,
-                "appointmentFrom": datetime.now().strftime("%Y-%m-%d"),
-            },
+            params=params,
             headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
