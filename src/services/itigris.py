@@ -200,7 +200,31 @@ class ItigrisService:
         return response.json()
 
     @classmethod
-    def handle_finished_records(cls) -> None:
+    def _format_receipt(cls, receipt: dict | None) -> None:
+        """Форматирование рецепта для Bitrix24"""
+
+        if not receipt:
+            return
+
+        for field in ["id", "date", "deleted", "empty", "doctor"]:
+            receipt.pop(field)
+
+    @classmethod
+    def _format_contact_lens_receipt(cls, receipt: dict | None) -> None:
+        """Форматирование рецепта контактных линз для Bitrix24"""
+
+        if not receipt:
+            return
+
+        for field in ["id", "createdOn", "doctor", "deleted"]:
+            receipt.pop(field, None)
+
+    @classmethod
+    def handle_finished_records(
+        cls,
+        record_id_to_lead_id: dict[int, int],
+        explored_order_ids: set[int],
+    ) -> None:
         """
         Обработка записей с подтвержденным статусом
         и обновление лидов в Bitrix24
@@ -220,8 +244,13 @@ class ItigrisService:
             return
 
         for record in records:
-            print(f"Обработка записи {record.get('id')}")
             try:
+                if record.get("id") in explored_order_ids:
+                    print(f"Запись {record.get('id')} уже обработана")
+                    continue
+
+                print(f"Обработка записи {record.get('id')}")
+
                 # Получение заказа к записи
                 order = cls.get_orders(
                     token,
@@ -245,31 +274,26 @@ class ItigrisService:
                     if contact_lens_perscriptions
                     else None
                 )
-                client_full_name = record.get("client", {}).get("fullName")
-                if not client_full_name:
-                    print(f"Имя клиента не найдено для заказа {order.get('id')}")
-                    continue
 
-                second_name, first_name, last_name = client_full_name.split(" ")
+                # Форматирование рецептов
+                cls._format_receipt(perscription)
+                cls._format_contact_lens_receipt(contact_lens_perscription)
+
                 # Поиск лида по имени, фамилии и отчеству
-                lead = BitrixService.get_lead_by_names(
-                    first_name,
-                    second_name,
-                    last_name,
-                )
-                if not lead:
-                    print(f"Лид не найден для заказа {order.get('id')}")
+                lead_id = record_id_to_lead_id.get(int(record.get("id", 0)))
+                if not lead_id:
+                    print(f"Лид не найден для записи {record.get('id')}")
                     continue
 
                 # Обновление лида в Bitrix24
                 fields = {
                     "UF_CRM_1760104053415": json.dumps(
-                        perscription, ensure_ascii=False
+                        perscription, indent=4, ensure_ascii=False
                     )  # Рецепт очков
                     if perscription
                     else None,
                     "UF_CRM_1760104354563": json.dumps(
-                        contact_lens_perscription, ensure_ascii=False
+                        contact_lens_perscription, indent=4, ensure_ascii=False
                     )  # Рецепт контактных линз
                     if contact_lens_perscription
                     else None,
@@ -300,14 +324,12 @@ class ItigrisService:
                         },
                     ],  # Тип очков
                 }
-                response = BitrixService.update_lead(lead["ID"], fields)
-
-                print(
-                    f"Ответ от Bitrix после обновления лида: {json.dumps(response, indent=4, ensure_ascii=False)}"
-                )
+                BitrixService.update_lead(lead_id, fields)
 
             except Exception as e:
                 print(f"Ошибка при обработке записи {record.get('id')}: {e}")
+            finally:
+                explored_order_ids.add(record.get("id"))
 
     # MARK: Orders
     @classmethod

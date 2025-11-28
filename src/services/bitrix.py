@@ -92,7 +92,7 @@ class BitrixService:
         return dt_utc.strftime("%Y-%m-%dT%H:%M:%S")
 
     @classmethod
-    def handle_new_leads(cls) -> None:
+    def handle_new_leads(cls, record_id_to_lead_id: dict[int, int]) -> None:
         """
         Обработка обнавленных лидов за последние FETCH_PERIOD_MINUTES минут
         и статусом IN_PROCESS
@@ -148,6 +148,15 @@ class BitrixService:
                         client_id=client_id,
                         time=cls._convert_date(lead_full.get("UF_CRM_1760092417949")),
                     )
+
+                    records = ItigrisService.get_records(
+                        itigris_token, status="CONFIRMED"
+                    )
+                    if not records:
+                        continue
+
+                    record = records[0]
+                    record_id_to_lead_id[int(record.get("id", 0))] = int(lead["ID"])
 
                     print(f"Лид {lead['ID']} обработан успешно")
                 except Exception as e:
