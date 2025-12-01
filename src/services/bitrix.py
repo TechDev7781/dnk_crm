@@ -154,6 +154,7 @@ class BitrixService:
 
                     records = ItigrisService.get_records(itigris_token)
                     if not records:
+                        print(f"Записи для лида {client_id} не найдены")
                         continue
 
                     max_id = None
