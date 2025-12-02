@@ -274,7 +274,7 @@ class ItigrisService:
 
         receipt_str = ""
         for field in ["model", "color"]:
-            receipt_str += f"{field}: {receipt.get(field) or 'не указано'} "
+            receipt_str += f"{field}: {receipt.get(field) or 'не указано'}\n"
 
         for eye in ["leftEye", "rightEye"]:
             receipt_str += f"{eye}:"
