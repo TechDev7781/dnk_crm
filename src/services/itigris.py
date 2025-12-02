@@ -261,7 +261,7 @@ class ItigrisService:
             "visusOs",
             "comments",
         ]:
-            receipt_str += f"{field}: {receipt.get(field) or 'не указано'} "
+            receipt_str += f"{field}: {receipt.get(field) or 'не указано'}\n"
 
         return receipt_str
 
@@ -287,7 +287,7 @@ class ItigrisService:
                 "diameter",
             ]:
                 receipt_str += (
-                    f"{field}: {receipt.get(eye, {}).get(field) or 'не указано'} "
+                    f"{field}: {receipt.get(eye, {}).get(field) or 'не указано'}\n"
                 )
 
         return receipt_str
