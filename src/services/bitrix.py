@@ -134,8 +134,8 @@ class BitrixService:
                         client_id = ItigrisService.create_client(
                             token=itigris_token,
                             first_name=lead_full.get("NAME"),
-                            second_name=lead_full.get("SECOND_NAME"),
-                            last_name=lead_full.get("LAST_NAME"),
+                            second_name=lead_full.get("LAST_NAME"),
+                            last_name=lead_full.get("SECOND_NAME"),
                             phone=lead_full.get("PHONE", [{}])[0].get("VALUE"),
                             email=lead_full.get("EMAIL", [{}])[0].get("VALUE"),
                             gender=True
