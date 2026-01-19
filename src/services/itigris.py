@@ -7,6 +7,7 @@ from src.constants import (
     ITIGRIS_URL_NEW,
 )
 from src.env import env_settings
+from src.utils import logger
 
 
 class ItigrisService:
@@ -61,7 +62,7 @@ class ItigrisService:
         try:
             return response.json().get("content", [{}])[0].get("id")
         except Exception as e:
-            print(f"Ошибка при получении клиента, создаем новый: {e}")
+            logger.info(f"Ошибка при получении клиента, создаем новый: {e}")
 
     @classmethod
     def get_client_ids(cls, token: str) -> str | None:
@@ -88,7 +89,7 @@ class ItigrisService:
                 ids.append(client.get("id"))
             return ids
         except Exception as e:
-            print(f"Ошибка при получении клиентов: {e}")
+            logger.info(f"Ошибка при получении клиентов: {e}")
 
     @classmethod
     def create_client(
@@ -303,7 +304,7 @@ class ItigrisService:
         и обновление лидов в Bitrix24
         """
 
-        print(
+        logger.info(
             f"Обработка записей с подтвержденным статусом {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
@@ -319,14 +320,14 @@ class ItigrisService:
         for record in records:
             try:
                 if record.get("id") in explored_order_ids:
-                    print(f"Запись {record.get('id')} уже обработана")
+                    logger.info(f"Запись {record.get('id')} уже обработана")
                     continue
 
-                print(f"Обработка записи {record.get('id')}")
+                logger.info(f"Обработка записи {record.get('id')}")
 
                 orders = cls.get_orders(record.get("client").get("id"))
                 if not orders:
-                    print(
+                    logger.info(
                         f"Заказы для клиента {record.get('client').get('id')} не найдены"
                     )
                     continue
@@ -369,7 +370,7 @@ class ItigrisService:
                 # Поиск лида по имени, фамилии и отчеству
                 lead_id = record_id_to_lead_id.get(int(record.get("id", 0)))
                 if not lead_id:
-                    print(f"Лид не найден для записи {record.get('id')}")
+                    logger.info(f"Лид не найден для записи {record.get('id')}")
                     continue
 
                 # Обновление лида в Bitrix24
@@ -412,7 +413,7 @@ class ItigrisService:
                 BitrixService.update_lead(lead_id, fields)
 
             except Exception as e:
-                print(f"Ошибка при обработке записи {record.get('id')}: {e}")
+                logger.info(f"Ошибка при обработке записи {record.get('id')}: {e}")
             finally:
                 explored_order_ids.add(record.get("id"))
 
@@ -455,7 +456,7 @@ class ItigrisService:
 
             return records
         except Exception as e:
-            print(f"Ошибка при получении записей: {e}")
+            logger.info(f"Ошибка при получении записей: {e}")
             return []
 
     # MARK: Prescriptions

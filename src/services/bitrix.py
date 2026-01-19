@@ -6,6 +6,7 @@ import requests
 from src.constants import FETCH_PERIOD_MINUTES
 from src.env import env_settings
 from src.services.itigris import ItigrisService
+from src.utils import logger
 
 
 class BitrixService:
@@ -99,7 +100,7 @@ class BitrixService:
         и статусом IN_PROCESS
         """
 
-        print(
+        logger.info(
             f"Обработка обнавленных лидов {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
@@ -120,7 +121,7 @@ class BitrixService:
             itigris_token = ItigrisService.login()
 
             for lead in leads:
-                print(f"Обработка обновленного лида {lead['ID']}")
+                logger.info(f"Обработка обновленного лида {lead['ID']}")
                 try:
                     # Получение полного лида с полями email и phone
                     lead_full = cls.get_lead(lead["ID"])
@@ -154,7 +155,7 @@ class BitrixService:
 
                     records = ItigrisService.get_records(itigris_token)
                     if not records:
-                        print(f"Записи для лида {client_id} не найдены")
+                        logger.info(f"Записи для лида {client_id} не найдены")
                         continue
 
                     max_id = None
@@ -167,8 +168,8 @@ class BitrixService:
 
                     record_id_to_lead_id[max_id] = int(lead["ID"])
 
-                    print(f"Лид {lead['ID']} обработан успешно")
+                    logger.info(f"Лид {lead['ID']} обработан успешно")
                 except Exception as e:
-                    print(f"Ошибка при обработке лида {lead['ID']}: {e}")
+                    logger.info(f"Ошибка при обработке лида {lead['ID']}: {e}")
         except Exception as e:
-            print(f"Ошибка при обработке лидов: {e}")
+            logger.info(f"Ошибка при обработке лидов: {e}")
