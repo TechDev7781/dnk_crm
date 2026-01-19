@@ -1,0 +1,10 @@
+services:
+  parser:
+    container_name: "parser"
+    build:
+      context: ./
+    restart: always
+    env_file:
+      - .env
+    command: uv run -m src.main
+    
