@@ -21,5 +21,4 @@ def main() -> None:
         time.sleep(60 * FETCH_PERIOD_MINUTES)
 
 
-if __name__ == "__main__":
-    main()
+main()
