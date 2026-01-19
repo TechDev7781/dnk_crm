@@ -3,6 +3,7 @@ import time
 from src.constants import FETCH_PERIOD_MINUTES
 from src.services.bitrix import BitrixService
 from src.services.itigris import ItigrisService
+from src.utils import logger
 
 record_id_to_lead_id: dict[int, int] = {}  # ID записи -> ID лида
 explored_order_ids: set[int] = set()  # ID заказа, которые уже были обработаны
@@ -10,6 +11,8 @@ explored_order_ids: set[int] = set()  # ID заказа, которые уже �
 
 def main() -> None:
     """Входная точка в приложение"""
+
+    logger.info("Запуск скрипта")
 
     while True:
         BitrixService.handle_new_leads(record_id_to_lead_id)
