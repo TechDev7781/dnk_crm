@@ -6,5 +6,7 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      - PYTHONUNBUFFERED=1
     command: python -m src.main
     
