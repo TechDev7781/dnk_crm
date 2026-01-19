@@ -6,5 +6,5 @@ services:
     restart: always
     env_file:
       - .env
-    command: uv run -m src.main
+    command: python -m src.main
     
