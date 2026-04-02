@@ -374,6 +374,7 @@ class ItigrisService:
 
                 # Обновление лида в Bitrix24
                 fields = {
+                    "STATUS_ID": "CONVERTED",
                     "UF_CRM_1760104053415": receipt_str,
                     "UF_CRM_1760104354563": contact_lens_receipt_str,
                     "UF_CRM_1760104146355": float(order.get("sum", 0))
