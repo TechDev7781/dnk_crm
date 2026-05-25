@@ -8,5 +8,5 @@ services:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
-    command: python -m src.main
+    command: uv run -m src.main
     

@@ -1,22 +1,16 @@
-import time
-from datetime import datetime, timedelta, timezone
-
 import requests
 
-from src.constants import FETCH_PERIOD_MINUTES
 from src.env import env_settings
-from src.services.itigris import ItigrisService
 
 
 class BitrixService:
-    # MARK: Leads
+    # MARK: Deals
     @classmethod
-    def get_leads(cls, filters: dict | None = None) -> list[dict]:
-        """Получение лидов с фильтрами"""
-
+    def get_deals(cls, filters: dict | None = None) -> list[dict]:
         response = requests.post(
-            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.lead.list",
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.item.list",
             json={
+                "entityTypeId": 2,
                 "filter": filters if filters else {},
                 "select": ["*"],
             },
@@ -24,151 +18,212 @@ class BitrixService:
 
         if response.status_code != 200:
             raise Exception(
-                f"Ошибка при получении лидов: {response.text}, статус: {response.status_code}"
+                f"Ошибка при получении сделок: {response.text}, статус: {response.status_code}"
             )
 
-        return response.json().get("result", [])
+        deals = response.json().get("result", {}).get("items", [])
+        for deal in deals:
+            contacts = deal.get("contactIds", [])
+            if contacts:
+                deal["contact"] = cls.get_contact(contacts[0])
+
+        return deals
 
     @classmethod
-    def get_lead(cls, id: int) -> dict:
-        """Получение лида по ID"""
-
-        response = requests.post(
-            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.lead.get",
-            json={
-                "ID": id,
-            },
-        )
-
-        if response.status_code != 200:
-            raise Exception(
-                f"Ошибка при получении лидов: {response.text}, статус: {response.status_code}"
-            )
-
-        return response.json().get("result", [])
-
-    @classmethod
-    def get_lead_by_names(
+    def create_deal(
         cls,
-        first_name: str,
-        second_name: str,
-        last_name: str,
+        title: str,
+        category_id: int,
+        stage_id: int,
+        contact_id: int,
+        company_id: int,
+        products: list[dict],
     ) -> dict:
-        """Поиск лида по имени, фамилии и отчеству"""
-
-        leads = cls.get_leads()
-        for lead in leads:
-            if (
-                lead.get("NAME") == first_name
-                and lead.get("SECOND_NAME") == second_name
-                and lead.get("LAST_NAME") == last_name
-            ):
-                return lead
-
-    @classmethod
-    def update_lead(cls, id: int, fields: list[dict]) -> None:
-        """Обновление лида в Bitrix24"""
-
         response = requests.post(
-            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.lead.update",
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.deal.add",
             json={
-                "id": id,
-                "fields": fields,
+                "fields": {
+                    "TITLE": title,
+                    "CATEGORY_ID": category_id,
+                    "STAGE_ID": stage_id,
+                    "CONTACT_ID": contact_id,
+                    "UF_CRM_1777383408": company_id,
+                },
             },
         )
 
         if response.status_code != 200:
             raise Exception(
-                f"Ошибка при обновлении лида: {response.text}, статус: {response.status_code}"
+                f"Ошибка при создании сделки: {response.text}, статус: {response.status_code}"
             )
 
-        return response.json()
+        cls.add_products(response.json().get("result", {}), products)
+
+        return response.json().get("result", {})
 
     @classmethod
-    def _convert_date(cls, date: str) -> str:
-        """Функция утиилита для конвертации даты в формат Itigris"""
-
-        dt = datetime.fromisoformat(date)
-        dt_utc = dt.astimezone(timezone(timedelta(hours=3)))
-        return dt_utc.strftime("%Y-%m-%dT%H:%M:%S")
-
-    @classmethod
-    def handle_new_leads(cls, record_id_to_lead_id: dict[int, int]) -> None:
-        """
-        Обработка обнавленных лидов за последние FETCH_PERIOD_MINUTES минут
-        и статусом IN_PROCESS
-        """
-
-        print(
-            f"Обработка обнавленных лидов {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    def update_deal(cls, deal_id: int, fields: dict) -> dict:
+        response = requests.post(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.item.update",
+            json={"entityTypeId": 2, "id": deal_id, "fields": fields},
         )
 
-        try:
-            filters = {
-                "=STATUS_ID": "IN_PROCESS",
-                ">DATE_MODIFY": (
-                    datetime.now() - timedelta(minutes=FETCH_PERIOD_MINUTES)
-                ).isoformat(),
-            }
+        return response.json().get("result", {})
 
-            # Получение лидов с фильтрами
-            leads = cls.get_leads(filters)
-            if not leads:
-                return
+    @classmethod
+    def get_contact(cls, contact_id: int) -> dict | None:
+        response = requests.get(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.contact.get",
+            params={"ID": contact_id},
+        )
 
-            # Получение токена для работы с Itigris
-            itigris_token = ItigrisService.login()
+        if response.status_code != 200:
+            return
 
-            for lead in leads:
-                print(f"Обработка обновленного лида {lead['ID']}")
-                try:
-                    # Получение полного лида с полями email и phone
-                    lead_full = cls.get_lead(lead["ID"])
-                    # Получение ID клиента в Itigris по номеру телефона
-                    client_id = ItigrisService.get_client_id_for_lead(
-                        token=itigris_token,
-                        phone=lead_full.get("PHONE", [{}])[0].get("VALUE"),
-                    )
-                    # Если клиент не найден, создаем нового
-                    if not client_id:
-                        client_id = ItigrisService.create_client(
-                            token=itigris_token,
-                            first_name=lead_full.get("NAME"),
-                            second_name=lead_full.get("LAST_NAME"),
-                            last_name=lead_full.get("SECOND_NAME"),
-                            phone=lead_full.get("PHONE", [{}])[0].get("VALUE"),
-                            email=lead_full.get("EMAIL", [{}])[0].get("VALUE"),
-                            gender=True
-                            if lead_full.get("UF_CRM_1762957506003") == "223"
-                            else False,
-                        )
-                        ItigrisService.prepare_client(itigris_token, client_id)
+        return response.json().get("result", {})
 
-                    # Создание записи в Itigris
-                    ItigrisService.create_record(
-                        client_id=client_id,
-                        time=cls._convert_date(lead_full.get("UF_CRM_1760092417949")),
-                    )
+    # MARK: Categories
+    @classmethod
+    def get_categories(cls, filters: dict | None = None) -> list[dict]:
+        response = requests.post(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.category.list",
+            json=filters if filters else {},
+        )
 
-                    time.sleep(3)
+        if response.status_code != 200:
+            raise Exception(
+                f"Ошибка при получении категорий: {response.text}, статус: {response.status_code}"
+            )
 
-                    records = ItigrisService.get_records(itigris_token)
-                    if not records:
-                        print(f"Записи для лида {client_id} не найдены")
-                        continue
+        return response.json().get("result", {}).get("categories", [])
 
-                    max_id = None
-                    for record in records:
-                        if not max_id:
-                            max_id = int(record.get("id", 0))
-                        else:
-                            if int(record.get("id", 0)) > max_id:
-                                max_id = int(record.get("id", 0))
+    # MARK: Doctors
+    @classmethod
+    def get_doctor(cls, id: int) -> dict:
+        response = requests.post(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/user.search",
+            json={"ID": id},
+        )
 
-                    record_id_to_lead_id[max_id] = int(lead["ID"])
+        if response.status_code != 200:
+            raise Exception(
+                f"Ошибка при получении врача: {response.text}, статус: {response.status_code}"
+            )
 
-                    print(f"Лид {lead['ID']} обработан успешно")
-                except Exception as e:
-                    print(f"Ошибка при обработке лида {lead['ID']}: {e}")
-        except Exception as e:
-            print(f"Ошибка при обработке лидов: {e}")
+        return response.json().get("result", [{}])[0]
+
+    # MARK: Departaments
+    @classmethod
+    def get_departament(cls, id: int) -> list[dict]:
+        response = requests.get(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.company.get",
+            params={"id": id},
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Ошибка при получении отделения: {response.text}, статус: {response.status_code}"
+            )
+
+        return response.json().get("result", [])
+
+    # MARK: Products
+    @classmethod
+    def get_products(cls, deal_id: int, all: bool = False) -> list[dict]:
+        response = requests.post(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.item.productrow.list",
+            json={
+                "filter": {"=ownerType": "D", "=ownerId": deal_id},
+                "select": ["*"],
+            },
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Ошибка при получении товарных позиций: {response.text}, статус: {response.status_code}"
+            )
+
+        products = response.json().get("result", {}).get("productRows", [])
+        if all:
+            return products
+
+        return products[0]
+
+    @classmethod
+    def get_product_by_id(cls, product_id: int) -> dict:
+        response = requests.post(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/catalog.product.get",
+            json={"id": product_id},
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Ошибка при получении товара: {response.text}, статус: {response.status_code}"
+            )
+
+        return response.json().get("result", {}).get("product", {})
+
+    @classmethod
+    def add_products(cls, deal_id: int, products: list[dict]) -> dict:
+        data = {
+            "id": deal_id,
+            "rows": [
+                {
+                    "PRODUCT_ID": p.get("id"),
+                    "PRODUCT_NAME": p.get("productName"),
+                    "PRICE": p.get("price"),
+                    "PRICE_EXCLUSIVE": p.get("priceExclusive") or p.get("price"),
+                    "PRICE_NETTO": p.get("priceNetto") or p.get("price"),
+                    "PRICE_BRUTTO": p.get("priceBrutto") or p.get("price"),
+                    "QUANTITY": p.get("quantity") or 1,
+                    "DISCOUNT_TYPE_ID": p.get("discountTypeId") or 1,
+                    "DISCOUNT_RATE": p.get("discountRate") or 0,
+                    "DISCOUNT_SUM": p.get("discountSum") or 0,
+                    "TAX_RATE": p.get("taxRate") or 0,
+                    "TAX_INCLUDED": p.get("taxIncludeD") or 0,
+                    "MEASURE_CODE": p.get("measureCode"),
+                    "MEASURE_NAME": p.get("measureName"),
+                    "SORT": p.get("sort"),
+                }
+                for p in products
+            ],
+        }
+
+        response = requests.post(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.deal.productrows.set",
+            json=data,
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Ошибка при добавлении товарных позиций: {response.text}, статус: {response.status_code}"
+            )
+
+        return response.json().get("result", {})
+
+    # MARK: Logs
+    @classmethod
+    def get_logs_icons(cls) -> list[dict]:
+        response = requests.post(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.timeline.icon.list",
+            json={},
+        )
+
+        return response.json().get("result", {}).get("icons", [])
+
+    @classmethod
+    def add_log(cls, deal_id: int, title: str, message: str) -> dict:
+        response = requests.post(
+            url=f"{env_settings.BITRIX_WEBHOOK_URL}/crm.timeline.logmessage.add",
+            json={
+                "fields": {
+                    "entityTypeId": 2,
+                    "entityId": deal_id,
+                    "title": title,
+                    "text": message,
+                    "iconCode": "sms",
+                },
+            },
+        )
+
+        return response.json().get("result", {})

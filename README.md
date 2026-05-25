@@ -7,8 +7,17 @@ ITIGRIS_DEPARTAMENT_ID - ID отделения в Itigris
 ITIGRIS_KEY - ключ для работы с Itigris
 ITIGRIS_USER_ID - ID пользователя в Itigris
 ITIGRIS_SERVICE_TYPE_ID - ID типа услуги в Itigris
+ITIGRIS_SECRETARY_LOGIN - логин секретаря в Itigris
+ITIGRIS_SECRETARY_PASSWORD - пароль секретаря в Itigris
+ITIGRIS_ADMINISTRATOR_LOGIN - логин администратора в Itigris
+ITIGRIS_ADMINISTRATOR_PASSWORD - пароль администратора в Itigris    
 
 BITRIX_WEBHOOK_URL - URL вебхука Bitrix24
+
+MEDODS_IDENTITY_KEY - ключ для работы с Medods
+MEDODS_SECRET_KEY - секретный ключ для работы с Medods
+MEDODS_LOGIN - логин в Medods
+MEDODS_PASSWORD - пароль в Medods
 `````
 
 Запуск приложения (необходимо иметь установленный Python):
@@ -32,7 +41,10 @@ python -m src.main
 src/
 ├── services/
 │   ├── bitrix.py - сервис для работы с Bitrix24
+│   ├── integration.py - сервис для интеграции с Itigris, Medods и Bitrix24
 │   └── itigris.py - сервис для работы с Itigris
+│   └── medods.py - сервис для работы с Medods
+│   └── parser.py - сервис для работы с парсером
 ├── constants.py - константы
 ├── env.py - переменные окружения
 └── main.py - файл входа приложения

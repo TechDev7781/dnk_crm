@@ -1,34 +1,40 @@
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
+from typing import Literal
 
 import requests
 
 from src.constants import (
     ITIGRIS_URL,
-    ITIGRIS_URL_NEW,
 )
 from src.env import env_settings
 
 
 class ItigrisService:
+    default_headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Host": "optima.itigris.ru",
+    }
+
     # MARK: Auth
     @classmethod
     def login(
         cls,
+        login: str,
+        password: str,
         company: str = env_settings.ITIGRIS_COMPANY,
-        login: str = env_settings.ITIGRIS_LOGIN,
-        password: str = env_settings.ITIGRIS_PASSWORD,
         department_id: int = env_settings.ITIGRIS_DEPARTAMENT_ID,
     ) -> str:
-        """Вход в систему"""
-
         response = requests.post(
-            url=f"{ITIGRIS_URL_NEW}/api/v2/sign/in",
+            url=f"{ITIGRIS_URL}/api/v2/sign/in",
             json={
                 "company": company,
                 "login": login,
                 "password": password,
                 "departmentId": department_id,
             },
+            headers=cls.default_headers,
         )
 
         if response.status_code != 200:
@@ -38,11 +44,9 @@ class ItigrisService:
 
     # MARK: Clients
     @classmethod
-    def get_client_id_for_lead(cls, token: str, phone: str) -> str | None:
-        """Получение ID клиента по номеру телефона"""
-
+    def get_client_id(cls, token: str, phone: str) -> str | None:
         response = requests.get(
-            url=f"{ITIGRIS_URL_NEW}/api/v2/clients",
+            url=f"{ITIGRIS_URL}/api/v2/clients",
             params={
                 "clientSearchType": "PHONE_NUMBER",
                 "searchString": phone,
@@ -50,6 +54,7 @@ class ItigrisService:
             },
             headers={
                 "Authorization": f"Bearer {token}",
+                **cls.default_headers,
             },
         )
 
@@ -64,16 +69,17 @@ class ItigrisService:
             print(f"Ошибка при получении клиента, создаем новый: {e}")
 
     @classmethod
-    def get_client_ids(cls, token: str) -> str | None:
-        """Получение ID клиента по номеру телефона"""
-
+    def get_client(cls, token: str, phone: str) -> dict | None:
         response = requests.get(
-            url=f"{ITIGRIS_URL_NEW}/api/v2/clients",
+            url=f"{ITIGRIS_URL}/api/v2/clients",
             params={
+                "clientSearchType": "PHONE_NUMBER",
+                "searchString": phone,
                 "deleted": False,
             },
             headers={
                 "Authorization": f"Bearer {token}",
+                **cls.default_headers,
             },
         )
 
@@ -83,12 +89,40 @@ class ItigrisService:
             )
 
         try:
-            ids = []
-            for client in response.json().get("content", [{}]):
-                ids.append(client.get("id"))
-            return ids
+            return response.json().get("content", [{}])[0]
         except Exception as e:
-            print(f"Ошибка при получении клиентов: {e}")
+            print(f"Ошибка при получении клиента, создаем новый: {e}")
+
+    @classmethod
+    def get_client_by_id(cls, token: str, id: int) -> dict | None:
+        response = requests.get(
+            url=f"{ITIGRIS_URL}/api/v2/clients/{id}/info",
+            headers={
+                "Authorization": f"Bearer {token}",
+                **cls.default_headers,
+            },
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Ошибка при получении клиента: {response.text}, статус: {response.status_code}"
+            )
+
+        try:
+            client = response.json()
+
+            client["phone"] = (
+                client["tel1"]
+                .replace("+", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace("-", "")
+                .replace(" ", "")
+            )
+
+            return client
+        except Exception as e:
+            print(f"Ошибка при получении клиента: {e}")
 
     @classmethod
     def create_client(
@@ -98,23 +132,38 @@ class ItigrisService:
         second_name: str,
         last_name: str,
         phone: str,
-        email: str,
-        gender: bool,
+        comment: str,
+        gender: Literal["MALE", "FEMALE"] | None = None,
+        birthday_day: int | None = None,
+        birthday_year: int | None = None,
+        birthday_month: int | None = None,
     ):
-        """Создание клиента"""
+        gender = True if gender == "MALE" else False
+
+        if birthday_day is None:
+            birthday_day = 1
+        if birthday_year is None:
+            birthday_year = 1990
+        if birthday_month is None:
+            birthday_month = 1
 
         response = requests.post(
-            url=f"{ITIGRIS_URL_NEW}/api/v2/clients",
+            url=f"{ITIGRIS_URL}/api/v2/clients",
             json={
                 "firstName": first_name,
                 "familyName": second_name,
                 "patronymicName": last_name,
                 "tel1": phone,
+                "comment": comment,
                 "gender": gender,
-                "email": email,
+                "informationSource": "Сайт",
+                "birthdayDay": birthday_day,
+                "birthdayYear": birthday_year,
+                "birthdayMonth": birthday_month,
             },
             headers={
                 "Authorization": f"Bearer {token}",
+                **cls.default_headers,
             },
         )
 
@@ -127,19 +176,15 @@ class ItigrisService:
 
     @classmethod
     def prepare_client(cls, token: str, id: int) -> None:
-        """Подготовка клиента на первом и втором этапе"""
-
         response = requests.post(
-            url=f"{ITIGRIS_URL_NEW}/api/v2/clients/{id}/agreements/prepare-text",
+            url=f"{ITIGRIS_URL}/api/v2/clients/{id}/agreements/prepare-text",
             json={
                 "agreementType": "PERSONAL_DATA_PROCESSING",
                 "collectionMethod": "QUESTIONNAIRE",
             },
             headers={
                 "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Host": "optima-2-backend-yc-prod-2.itigris.ru",
+                **cls.default_headers,
             },
         )
 
@@ -149,16 +194,14 @@ class ItigrisService:
             )
 
         response = requests.post(
-            url=f"{ITIGRIS_URL_NEW}/api/v2/clients/{id}/agreements",
+            url=f"{ITIGRIS_URL}/api/v2/clients/{id}/agreements",
             json={
                 "agreementType": "PERSONAL_DATA_PROCESSING",
                 "collectionMethod": "QUESTIONNAIRE",
             },
             headers={
                 "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Host": "optima-2-backend-yc-prod-2.itigris.ru",
+                **cls.default_headers,
             },
         )
 
@@ -167,28 +210,147 @@ class ItigrisService:
                 f"Ошибка при подготовке клиента на втором этапе: {response.text}, статус: {response.status_code}"
             )
 
+    @classmethod
+    def update_client(cls, token: str, id: int, data: dict) -> dict:
+        response = requests.put(
+            url=f"{ITIGRIS_URL}/api/v2/clients/{id}",
+            json=data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                **cls.default_headers,
+            },
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Ошибка при обновлении клиента: {response.text}, статус: {response.status_code}"
+            )
+
+        return response.json()
+
+    # MARK: Doctors
+    @classmethod
+    def get_doctor(
+        cls,
+        token: str,
+        first_name: str | None = None,
+        second_name: str | None = None,
+        last_name: str | None = None,
+    ) -> list[dict]:
+        response = requests.get(
+            url=f"{ITIGRIS_URL}/api/v2/users/available/doctors",
+            headers={
+                "Authorization": f"Bearer {token}",
+                **cls.default_headers,
+            },
+        )
+
+        if not response.status_code == 200:
+            raise Exception(
+                f"Ошибка при получении врачей: {response.text}, статус: {response.status_code}"
+            )
+
+        doctors = response.json()
+
+        if first_name or second_name or last_name:
+            filtered_doctors = []
+            for d in doctors:
+                if (
+                    (not first_name or d.get("firstName") == first_name)
+                    and (not second_name or d.get("familyName") == second_name)
+                    and (not last_name or d.get("patronymicName") == last_name)
+                ):
+                    filtered_doctors.append(d)
+
+            doctors = filtered_doctors
+
+        return doctors[0] if doctors else None
+
+    # MARK: Products
+    @classmethod
+    def get_product(
+        cls,
+        token: str,
+        name: str,
+    ) -> list[dict]:
+        page = 0
+        while True:
+            response = requests.get(
+                url=f"{ITIGRIS_URL}/api/v2/services/types",
+                params={
+                    "page": page,
+                    "size": 10,
+                },
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    **cls.default_headers,
+                },
+            )
+
+            if not response.status_code == 200:
+                raise Exception(
+                    f"Ошибка при получении типов услуг: {response.text}, статус: {response.status_code}"
+                )
+
+            products = response.json()["content"]
+            if not products:
+                break
+
+            for product in products:
+                if product.get("name") == name:
+                    return product
+
+            page += 1
+
+            time.sleep(1)
+
+    # MARK: Departaments
+    @classmethod
+    def get_departaments(
+        cls,
+        key: str = env_settings.ITIGRIS_KEY,
+    ) -> list[dict]:
+        response = requests.get(
+            url=f"{ITIGRIS_URL}/remoteRegistry/getDepartments",
+            params={
+                "key": key,
+            },
+            headers={
+                **cls.default_headers,
+            },
+        )
+
+        if not response.status_code == 200:
+            raise Exception(
+                f"Ошибка при получении отделений: {response.text}, статус: {response.status_code}"
+            )
+
+        return response.json()
+
     # MARK: Records
     @classmethod
     def create_record(
         cls,
         client_id: int,
         time: str,
+        product_id: int,
+        doctor_id: int,
         key: str = env_settings.ITIGRIS_KEY,
-        user_id: int = env_settings.ITIGRIS_USER_ID,
-        service_type_id: int = env_settings.ITIGRIS_SERVICE_TYPE_ID,
     ) -> None:
-        """Создание записи"""
+        params = {
+            "key": key,
+            "clientId": client_id,
+            "userId": doctor_id,
+            "serviceTypeId": product_id,
+            "time": time,
+        }
 
-        response = requests.post(
+        response = requests.get(
             url=f"{ITIGRIS_URL}/remoteRegistry/register",
-            params={
-                "key": key,
-                "clientId": client_id,
-                "userId": user_id,
-                "serviceTypeId": service_type_id,
-                "time": time,
+            params=params,
+            headers={
+                **cls.default_headers,
             },
-            headers={"Host": "optima.itigris.ru"},
         )
 
         if not response.status_code == 200:
@@ -202,8 +364,6 @@ class ItigrisService:
         token: str,
         status: str | None = None,
     ) -> list[dict]:
-        """Получение записей по статусу"""
-
         params = {}
         if status:
             params["status"] = status
@@ -211,13 +371,11 @@ class ItigrisService:
         params["appointmentFrom"] = datetime.now().strftime("%Y-%m-%d")
 
         response = requests.get(
-            url=f"{ITIGRIS_URL_NEW}/api/v2/registry-records",
+            url=f"{ITIGRIS_URL}/api/v2/registry-records",
             params=params,
             headers={
                 "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Host": "optima-2-backend-yc-prod-2.itigris.ru",
+                **cls.default_headers,
             },
         )
 
@@ -227,217 +385,42 @@ class ItigrisService:
             )
 
         return response.json()
-
-    @classmethod
-    def _format_receipt(cls, receipt: dict | None) -> str | None:
-        """Форматирование рецепта для Bitrix24"""
-
-        if not receipt:
-            return
-
-        receipt_str = ""
-
-        for field in [
-            "sphOd",
-            "sphOs",
-            "cylOd",
-            "cylOs",
-            "axOd",
-            "axOs",
-            "prism1DioptreOd",
-            "prism1DioptreOs",
-            "prism2DioptreOd",
-            "prism2DioptreOs",
-            "prism1BaseOd",
-            "prism1BaseOs",
-            "prism2BaseOd",
-            "prism2BaseOs",
-            "addidationOd",
-            "addidationOs",
-            "dpp",
-            "dppOd",
-            "dppOs",
-            "visusOd",
-            "visusOs",
-            "comments",
-        ]:
-            receipt_str += f"{field}: {receipt.get(field) or 'не указано'}\n"
-
-        return receipt_str
-
-    @classmethod
-    def _format_contact_lens_receipt(cls, receipt: dict | None) -> str | None:
-        """Форматирование рецепта контактных линз для Bitrix24"""
-
-        if not receipt:
-            return
-
-        receipt_str = ""
-        for field in ["model", "color"]:
-            receipt_str += f"{field}: {receipt.get(field) or 'не указано'}\n"
-
-        for eye in ["leftEye", "rightEye"]:
-            receipt_str += f"{eye}:"
-            for field in [
-                "dioptre",
-                "cylinder",
-                "axis",
-                "add",
-                "curvatureRadius",
-                "diameter",
-            ]:
-                receipt_str += (
-                    f"{field}: {receipt.get(eye, {}).get(field) or 'не указано'}\n"
-                )
-
-        return receipt_str
-
-    @classmethod
-    def handle_finished_records(
-        cls,
-        record_id_to_lead_id: dict[int, int],
-        explored_order_ids: set[int],
-    ) -> None:
-        """
-        Обработка записей с подтвержденным статусом
-        и обновление лидов в Bitrix24
-        """
-
-        print(
-            f"Обработка записей с подтвержденным статусом {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-
-        from src.services.bitrix import BitrixService
-
-        # Получение токена для работы с Itigris
-        token = cls.login()
-
-        records = cls.get_records(token, status="REALIZED")
-        if not records:
-            return
-
-        for record in records:
-            try:
-                if record.get("id") in explored_order_ids:
-                    print(f"Запись {record.get('id')} уже обработана")
-                    continue
-
-                print(f"Обработка записи {record.get('id')}")
-
-                orders = cls.get_orders(record.get("client").get("id"))
-                if not orders:
-                    print(
-                        f"Заказы для клиента {record.get('client').get('id')} не найдены"
-                    )
-                    continue
-
-                # Сопоставление записи с заказом, по максимальному ID заказа
-                order, max_id = None, None
-                for order in orders:
-                    if not max_id:
-                        max_id = int(order.get("id", 0))
-                        order = order
-                    else:
-                        if int(order.get("id", 0)) > max_id:
-                            max_id = int(order.get("id", 0))
-                            order = order
-
-                # Получение рецептов к записи (очки и контактные линзы)
-                prescriptions = cls.get_prescriptions(
-                    token,
-                    record.get("client").get("id"),
-                )
-
-                perscriptions = prescriptions.get("prescriptions")
-                contact_lens_perscriptions = prescriptions.get(
-                    "contactLensPrescriptions",
-                )
-                # Получение первого рецепта (очки) и первого рецепта для контактных линз
-                perscription = perscriptions[0] if perscriptions else None
-                contact_lens_perscription = (
-                    contact_lens_perscriptions[0]
-                    if contact_lens_perscriptions
-                    else None
-                )
-
-                # Форматирование рецептов
-                receipt_str = cls._format_receipt(perscription)
-                contact_lens_receipt_str = cls._format_contact_lens_receipt(
-                    contact_lens_perscription
-                )
-
-                # Поиск лида по имени, фамилии и отчеству
-                lead_id = record_id_to_lead_id.get(int(record.get("id", 0)))
-                if not lead_id:
-                    print(f"Лид не найден для записи {record.get('id')}")
-                    continue
-
-                # Обновление лида в Bitrix24
-                fields = {
-                    "STATUS_ID": "CONVERTED",
-                    "UF_CRM_1760104053415": receipt_str,
-                    "UF_CRM_1760104354563": contact_lens_receipt_str,
-                    "UF_CRM_1760104146355": float(order.get("sum", 0))
-                    + float(order.get("discount", 0)),  # Сумма заказа
-                    "UF_CRM_1760104154471": float(
-                        order.get("sum", 0)
-                    ),  # Сумма к оплате
-                    "UF_CRM_1760104282834": int(
-                        (
-                            float(order.get("discount", 0))
-                            / (
-                                float(order.get("sum", 0))
-                                + float(order.get("discount", 0))
-                            )
-                        )
-                        * 100
-                    ),  # Скидка
-                    "UF_CRM_1760104313977": [
-                        {
-                            "NAME": "не выбрано",
-                            "VALUE": "",
-                            "IS_SELECTED": True,
-                        },
-                        {
-                            "NAME": "Ночные",
-                            "VALUE": 45,
-                            "IS_SELECTED": False,
-                        },
-                        {
-                            "NAME": "Дневные",
-                            "VALUE": 47,
-                            "IS_SELECTED": False,
-                        },
-                    ],  # Тип очков
-                }
-                BitrixService.update_lead(lead_id, fields)
-
-            except Exception as e:
-                print(f"Ошибка при обработке записи {record.get('id')}: {e}")
-            finally:
-                explored_order_ids.add(record.get("id"))
 
     # MARK: Orders
     @classmethod
     def get_orders(
         cls,
-        client_id: int,
+        token: str,
         status: str | None = None,
-        key: str = env_settings.ITIGRIS_KEY,
+        department_id: int | None = None,
+        created_from: str | None = datetime.now().strftime("%Y-%m-%d"),
+        created_to: str | None = (datetime.now() + timedelta(days=1)).strftime(
+            "%Y-%m-%d"
+        ),
+        size: int = 100,
+        page: int = 0,
     ) -> list[dict]:
-        """Получение записей по статусу"""
-
-        # Фильтрация по дате (пока убрано, можно добавить по необходимости)
-        # params["startDate"] = datetime.now().strftime("%d.%m.%Y")
-        # params["endDate"] = (datetime.now() + timedelta(days=1)).strftime("%d.%m.%Y")
+        params = {}
+        if status:
+            params["status"] = status
+        if department_id:
+            params["departmentId"] = department_id
+        if created_from:
+            params["createdOnFrom"] = created_from
+        if created_to:
+            params["createdOnTo"] = created_to
 
         response = requests.get(
-            url=f"{ITIGRIS_URL}/remoteOrderHistory/list",
+            url=f"{ITIGRIS_URL}/api/v2/orders",
             params={
-                "key": key,
-                "clientId": client_id,
+                "size": size,
+                "page": page,
+                **params,
             },
-            headers={"Host": "optima.itigris.ru"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                **cls.default_headers,
+            },
         )
 
         if not response.status_code == 200:
@@ -445,42 +428,49 @@ class ItigrisService:
                 f"Ошибка при получении записей с подтвержденным статусом: {response.text}, статус: {response.status_code}"
             )
 
-        if not status:
-            return response.json()
+        orders = response.json()["content"]
+        filtered_orders = []
+        for order in orders:
+            # if order["createdAt"] < (datetime.now() - timedelta(minutes=30)).strftime(
+            #     "%Y-%m-%dT%H:%M:%S"
+            # ):
+            #     continue
 
-        try:
-            records = []
-            for record in response.json():
-                if record.get("status") == status:
-                    records.append(record)
+            if status:
+                if order.get("status") == status:
+                    if status == "ORDER_READY":
+                        if order["readyStatusInStore"] is True:
+                            filtered_orders.append(order)
+                    else:
+                        filtered_orders.append(order)
+            else:
+                filtered_orders.append(order)
 
-            return records
-        except Exception as e:
-            print(f"Ошибка при получении записей: {e}")
-            return []
+        return filtered_orders
 
-    # MARK: Prescriptions
     @classmethod
-    def get_prescriptions(
+    def create_order(
         cls,
-        token: str,
         client_id: int,
-    ) -> list[dict]:
-        """Получение рецептов по ID клиента"""
-
-        response = requests.get(
-            f"{ITIGRIS_URL_NEW}/api/v2/clients/{client_id}/prescription",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Host": "optima-2-backend-yc-prod-2.itigris.ru",
+        departament_id: int,
+        goods: list,
+        price: float,
+        key: str = env_settings.ITIGRIS_KEY,
+    ) -> None:
+        response = requests.post(
+            url=f"{ITIGRIS_URL}/remoteSale/create",
+            params={
+                "key": key,
+            },
+            json={
+                "departmentId": departament_id,
+                "clientId": client_id,
+                "paidSum": price,
+                "goods": goods,
             },
         )
 
-        if not response.status_code == 200:
+        if response.status_code != 200:
             raise Exception(
-                f"Ошибка при получении рецепта очков: {response.text}, статус: {response.status_code}"
+                f"Ошибка при создании заказа: {response.text}, статус: {response.status_code}"
             )
-
-        return response.json()
